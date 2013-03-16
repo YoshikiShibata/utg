@@ -1,9 +1,13 @@
+// Copyright (C) 2013 Yoshiki Shibata. All rights reserved
+
 package main
 
 import "fmt"
 import "os"
 import "bufio"
 import "regexp"
+
+// This is a simple "grep" command implementation
 
 // grep [OPTIONS] PATTERN FILE...
 func main() {
@@ -20,6 +24,7 @@ func main() {
 }
 
 func showUsage(programName string) {
+	fmt.Printf("Version 0.0\n")
 	fmt.Printf("%s [OPTIONS] PATTERN FILE...\n", programName)
 }
 
@@ -96,7 +101,6 @@ func grepPattern(pattern *regexp.Regexp, file string, resultChan chan grepResult
 			resultChan <- result
 		}
 	}
-	
 
 	result.eof = true;
 	resultChan <- result
