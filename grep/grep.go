@@ -8,19 +8,24 @@ import "bufio"
 import "regexp"
 
 // This is a simple "grep" command implementation
+// Each specified file will be examined by a goroutine assigned for the file.
 
 // grep [OPTIONS] PATTERN FILE...
+//
+// Note that the current implementation supports NO OPTIONS.
+
 func main() {
 	args := os.Args
 	if len(args) <= 2 {
 		showUsage(args[0])
-		return;
+		os.Exit(1)
 	}
 
 	pattern := args[1];
 	files := args[2:]
 	
-	grep(pattern, files)
+	grepPatternFromFiles(pattern, files)
+	os.Exit(0)
 }
 
 func showUsage(programName string) {
@@ -36,17 +41,17 @@ type grepResult struct {
 }
 
 
-func grep(pattern string, files []string) {
+func grepPatternFromFiles(pattern string, files []string) {
 	compiledPattern, err := regexp.Compile(pattern)
 	if err != nil {
 		fmt.Printf("Illegal pattern (%s) : %s\n", pattern, err.Error())
-		return
+		os.Exit(1)
 	}
 
 	results := make([]chan grepResult, len(files))
 	for i := 0; i < len(files); i++ {
 		results[i] = make(chan grepResult)
-		go grepPattern(compiledPattern, files[i], results[i])
+		go grepPatternFromOneFile(compiledPattern, files[i], results[i])
 	}
 
 	showResults(results)
@@ -65,7 +70,9 @@ func showResults(results []chan grepResult) {
 	}
 }
 
-func grepPattern(pattern *regexp.Regexp, file string, resultChan chan grepResult) {
+func grepPatternFromOneFile(pattern *regexp.Regexp, 
+				 file string, 
+				 resultChan chan grepResult) {
 	var result grepResult
 
 	result.file = file
@@ -79,7 +86,7 @@ func grepPattern(pattern *regexp.Regexp, file string, resultChan chan grepResult
 		return
 	}
 
-	lineNumber := 1
+	lineNumber := 0
 	lineReader := bufio.NewReaderSize(openedFile, 255)
 	for line, isPrefix, e := lineReader.ReadLine();
 	    e == nil;
