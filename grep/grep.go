@@ -42,26 +42,46 @@ type grepResult struct {
 
 
 func grepPatternFromFiles(pattern string, files []string) {
+    expandedFiles := expandFiles(files)
     compiledPattern, err := regexp.Compile(pattern)
     if err != nil {
         fmt.Printf("Illegal pattern (%s) : %s\n", pattern, err.Error())
         os.Exit(1)
     }
 
-    results := make([]chan grepResult, len(files))
-    for i := 0; i < len(files); i++ {
+    results := make([]chan grepResult, len(expandedFiles))
+
+    for i, file := range expandedFiles {
         results[i] = make(chan grepResult)
-        go grepPatternFromOneFile(compiledPattern, files[i], results[i])
+        go grepPatternFromOneFile(compiledPattern, file, results[i])
     }
 
     showResults(results)
 }
 
+func expandFiles(files []string) []string {
+    result := make([]string, 0, len(files))
+
+    for _, file := range files {
+        for _, expandedFile := range expandFile(file) {
+            result = append(result, expandedFile)
+        }
+    }
+    return result
+}
+
+// NOT IMPLEMENTED YET
+func expandFile(file string) []string {
+    result := make([]string, 0, 1)
+
+    return append(result, file);
+}
+
 func showResults(results []chan grepResult) {
-    for i := 0; i < len(results); i++ {
-        for result := <- results[i];
+    for _, resultChan := range results {
+        for result := <- resultChan;
             !result.eof;
-            result = <- results[i] {
+            result = <- resultChan {
             fmt.Printf("%s(%d): %s\n",
                     result.file,
                     result.lineNumber,
