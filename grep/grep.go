@@ -7,6 +7,7 @@ import "os"
 import "bufio"
 import "regexp"
 import "io/ioutil"
+import "runtime"
 
 // This is a simple "grep" command implementation
 // Each specified file will be examined by a goroutine assigned for the file.
@@ -16,6 +17,9 @@ import "io/ioutil"
 // Note that the current implementation supports NO OPTIONS.
 
 func main() {
+	cpus := runtime.NumCPU()
+	runtime.GOMAXPROCS(cpus)
+
     args := os.Args
     if len(args) <= 2 {
         showUsage(args[0])
@@ -26,8 +30,9 @@ func main() {
     files := args[2:]
 
 	grep := newGoGrep(pattern, files)
-    go grep.grepPatternFromFiles(grep.reduceChan, ".")
-	showResults(grep.reduceChan)
+	reduceChan := make(chan grepResult)
+    go grep.executeFromDirectory(reduceChan, ".")
+	showResults(reduceChan)
     os.Exit(0)
 }
 
@@ -35,14 +40,12 @@ type goGrep struct {
 	pattern 		string
 	compiledPattern *regexp.Regexp
 	files[] 		string
-	reduceChan		chan grepResult
 }
 
 func newGoGrep(pattern string, files []string) *goGrep {
 	this := new(goGrep)
 	this.pattern = pattern
 	this.files = files
-	this.reduceChan = make(chan grepResult)
 
 	compiledPattern, err := regexp.Compile(pattern)
     if err != nil {
@@ -65,24 +68,31 @@ type grepResult struct {
 }
 
 
-func (this *goGrep) grepPatternFromFiles(result    chan grepResult, 
+func (this *goGrep) executeFromDirectory(result    chan grepResult, 
 										 directory string) {
     expandedFiles := expandFiles(directory, this.files)
 
-    results := make([]chan grepResult, len(expandedFiles))
+	noOfFiles := len(expandedFiles)
+    results := make([]chan grepResult, noOfFiles)
 
+	for i := 0; i < noOfFiles; i++ {
+        results[i] = make(chan grepResult)
+	}
+
+    go reduceResults(result, results)
 
     for i, file := range expandedFiles {
-        results[i] = make(chan grepResult)
-		if (directory == ".") {
-        	go this.grepPatternFromOneFile(file, results[i])
+		fileInfo, err := os.Stat(file)
+    	if err != nil {
+        	fmt.Printf("Illegal file (%s) : %s\n", file, err.Error())
+        	os.Exit(1)
+		}
+		if fileInfo.IsDir() {
+			go this.executeFromDirectory(results[i], file)
 		} else {
-        	go this.grepPatternFromOneFile(
-					directory + "/" + file, results[i])
+        	go this.grepPatternFromOneFile(file, results[i])
 		}
     }
-
-    reduceResults(result, results)
 }
 
 func expandFiles(directory string, files []string) []string {
@@ -109,11 +119,12 @@ func expandFile(directory string, file string) []string {
 	fileInfos, _ := ioutil.ReadDir(directory)
 	for _, fileInfo := range fileInfos {
 		fileName := fileInfo.Name()
-		if compiledPattern.MatchString(fileName) {
+		if compiledPattern.MatchString(fileName) || 
+		   fileInfo.IsDir() {
 			if (directory == ".") {
 				result = append(result, fileName)
 			} else {
-				result = append(result, directory + fileName)
+				result = append(result, directory + "/" + fileName)
 			}
 		}
 	}
@@ -169,6 +180,8 @@ func (this *goGrep) grepPatternFromOneFile(file string,
 		close(resultChan)
         return
     }
+
+	// runtime.Gosched()
 
     lineNumber := 0
     lineReader := bufio.NewReaderSize(openedFile, 255)
