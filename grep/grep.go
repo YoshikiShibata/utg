@@ -11,7 +11,7 @@ import "io/ioutil"
 // This is a simple "grep" command implementation
 // Each specified file will be examined by a goroutine assigned for the file.
 
-// grep [OPTIONS] PATTERN FILE...
+// grep [-r] PATTERN FILE...
 //
 // Note that the current implementation supports NO OPTIONS.
 
@@ -25,13 +25,13 @@ func main() {
     pattern := args[1];
     files := args[2:]
 
-    grepPatternFromFiles(pattern, files)
+    grepPatternFromFiles(".", pattern, files)
     os.Exit(0)
 }
 
 func showUsage(programName string) {
     fmt.Printf("Version 0.0\n")
-    fmt.Printf("%s [OPTIONS] PATTERN FILE...\n", programName)
+    fmt.Printf("%s [-r] PATTERN FILE...\n", programName)
 }
 
 type grepResult struct {
@@ -41,8 +41,8 @@ type grepResult struct {
 }
 
 
-func grepPatternFromFiles(pattern string, files []string) {
-    expandedFiles := expandFiles(files)
+func grepPatternFromFiles(directory string, pattern string, files []string) {
+    expandedFiles := expandFiles(directory, files)
     compiledPattern, err := regexp.Compile(pattern)
     if err != nil {
         fmt.Printf("Illegal pattern (%s) : %s\n", pattern, err.Error())
@@ -59,11 +59,11 @@ func grepPatternFromFiles(pattern string, files []string) {
     showResults(results)
 }
 
-func expandFiles(files []string) []string {
+func expandFiles(directory string, files []string) []string {
     result := make([]string, 0, len(files))
 
     for _, file := range files {
-        for _, expandedFile := range expandFile(file) {
+        for _, expandedFile := range expandFile(directory, file) {
             result = append(result, expandedFile)
         }
     }
@@ -71,12 +71,8 @@ func expandFiles(files []string) []string {
 }
 
 // NOT IMPLEMENTED YET
-func expandFile(file string) []string {
+func expandFile(directory string, file string) []string {
     result := make([]string, 0, 1)
-
-	if !containsAsterisks(file) {
-    	return append(result, file);
-	}
 
 	pattern := toRegexPattern(file)
 	compiledPattern, err := regexp.Compile(pattern)
@@ -85,8 +81,7 @@ func expandFile(file string) []string {
         os.Exit(1)
     }
 
-
-	fileInfos, _ := ioutil.ReadDir(".")
+	fileInfos, _ := ioutil.ReadDir(directory)
 	for _, fileInfo := range fileInfos {
 		fileName := fileInfo.Name()
 		if compiledPattern.MatchString(fileName) {
@@ -95,15 +90,6 @@ func expandFile(file string) []string {
 	}
 
 	return result
-}
-
-func containsAsterisks(fileName string) bool {
-	for _, ch := range fileName {
-		if ch == '*' {
-			return true
-		}
-	}
-	return false
 }
 
 func toRegexPattern(fileName string) string {
