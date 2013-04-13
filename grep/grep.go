@@ -25,12 +25,36 @@ func main() {
     pattern := args[1];
     files := args[2:]
 
-    grepPatternFromFiles(".", pattern, files)
+	grep := newGoGrep(pattern, files)
+    go grep.grepPatternFromFiles(grep.reduceChan, ".")
+	showResults(grep.reduceChan)
     os.Exit(0)
 }
 
+type goGrep struct {
+	pattern 		string
+	compiledPattern *regexp.Regexp
+	files[] 		string
+	reduceChan		chan grepResult
+}
+
+func newGoGrep(pattern string, files []string) *goGrep {
+	this := new(goGrep)
+	this.pattern = pattern
+	this.files = files
+	this.reduceChan = make(chan grepResult)
+
+	compiledPattern, err := regexp.Compile(pattern)
+    if err != nil {
+        fmt.Printf("Illegal pattern (%s) : %s\n", pattern, err.Error())
+        os.Exit(1)
+    }
+	this.compiledPattern = compiledPattern
+	return this
+}
+
 func showUsage(programName string) {
-    fmt.Printf("Version 0.0\n")
+    fmt.Printf("Version 0.1\n")
     fmt.Printf("%s [-r] PATTERN FILE...\n", programName)
 }
 
@@ -41,22 +65,24 @@ type grepResult struct {
 }
 
 
-func grepPatternFromFiles(directory string, pattern string, files []string) {
-    expandedFiles := expandFiles(directory, files)
-    compiledPattern, err := regexp.Compile(pattern)
-    if err != nil {
-        fmt.Printf("Illegal pattern (%s) : %s\n", pattern, err.Error())
-        os.Exit(1)
-    }
+func (this *goGrep) grepPatternFromFiles(result    chan grepResult, 
+										 directory string) {
+    expandedFiles := expandFiles(directory, this.files)
 
     results := make([]chan grepResult, len(expandedFiles))
 
+
     for i, file := range expandedFiles {
         results[i] = make(chan grepResult)
-        go grepPatternFromOneFile(compiledPattern, file, results[i])
+		if (directory == ".") {
+        	go this.grepPatternFromOneFile(file, results[i])
+		} else {
+        	go this.grepPatternFromOneFile(
+					directory + "/" + file, results[i])
+		}
     }
 
-    showResults(results)
+    reduceResults(result, results)
 }
 
 func expandFiles(directory string, files []string) []string {
@@ -70,7 +96,6 @@ func expandFiles(directory string, files []string) []string {
     return result
 }
 
-// NOT IMPLEMENTED YET
 func expandFile(directory string, file string) []string {
     result := make([]string, 0, 1)
 
@@ -85,7 +110,11 @@ func expandFile(directory string, file string) []string {
 	for _, fileInfo := range fileInfos {
 		fileName := fileInfo.Name()
 		if compiledPattern.MatchString(fileName) {
-			result = append(result, fileName)
+			if (directory == ".") {
+				result = append(result, fileName)
+			} else {
+				result = append(result, directory + fileName)
+			}
 		}
 	}
 
@@ -105,21 +134,30 @@ func toRegexPattern(fileName string) string {
 	return string(runes)
 }
 
-func showResults(results []chan grepResult) {
+func reduceResults(reduceChan chan grepResult, results []chan grepResult) {
     for _, resultChan := range results {
         for result, ok := <- resultChan;
             ok;
             result, ok = <- resultChan {
-            fmt.Printf("%s(%d): %s\n",
+			reduceChan <- result
+        }
+    }
+	close(reduceChan)
+}
+
+func showResults(resultsChan chan grepResult) {
+	for result, ok := <- resultsChan;
+	    ok;
+		result, ok = <- resultsChan {
+        fmt.Printf("%s(%d): %s\n",
                     result.file,
                     result.lineNumber,
                     result.line)
-        }
-    }
+	}
 }
 
-func grepPatternFromOneFile(pattern *regexp.Regexp,
-                 file string,
+
+func (this *goGrep) grepPatternFromOneFile(file string,
                  resultChan chan grepResult) {
     var result grepResult
 
@@ -148,7 +186,7 @@ func grepPatternFromOneFile(pattern *regexp.Regexp,
                 }
             }
         }
-        if pattern.MatchString(fullLine) {
+        if this.compiledPattern.MatchString(fullLine) {
             result.lineNumber = lineNumber
             result.line = fullLine
             resultChan <- result
