@@ -35,7 +35,6 @@ func showUsage(programName string) {
 
 type grepResult struct {
     file        string
-    eof         bool
     lineNumber  int
     line        string
 }
@@ -79,9 +78,9 @@ func expandFile(file string) []string {
 
 func showResults(results []chan grepResult) {
     for _, resultChan := range results {
-        for result := <- resultChan;
-            !result.eof;
-            result = <- resultChan {
+        for result, ok := <- resultChan;
+            ok;
+            result, ok = <- resultChan {
             fmt.Printf("%s(%d): %s\n",
                     result.file,
                     result.lineNumber,
@@ -96,13 +95,11 @@ func grepPatternFromOneFile(pattern *regexp.Regexp,
     var result grepResult
 
     result.file = file
-    result.eof  = false
 
     openedFile, err := os.Open(file)
     if err != nil {
         fmt.Printf("%s: %s\n", file, err.Error())
-        result.eof = true
-        resultChan <- result
+		close(resultChan)
         return
     }
 
@@ -126,9 +123,9 @@ func grepPatternFromOneFile(pattern *regexp.Regexp,
             result.lineNumber = lineNumber
             result.line = fullLine
             resultChan <- result
+			fmt.Printf("written to the channel\n")
         }
     }
 
-    result.eof = true
-    resultChan <- result
+	close(resultChan)
 }
