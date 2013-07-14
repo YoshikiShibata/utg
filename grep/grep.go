@@ -74,6 +74,8 @@ func (this *goGrep) executeFromDirectory(result    chan grepResult,
 
 	noOfFiles := len(expandedFiles)
     results := make([]chan grepResult, noOfFiles)
+	const maxCntOfSemaphore = 10
+	semaphore := make(chan int, maxCntOfSemaphore)
 
 	for i := 0; i < noOfFiles; i++ {
         results[i] = make(chan grepResult)
@@ -90,7 +92,7 @@ func (this *goGrep) executeFromDirectory(result    chan grepResult,
 		if fileInfo.IsDir() {
 			go this.executeFromDirectory(results[i], file)
 		} else {
-        	go this.grepPatternFromOneFile(file, results[i])
+			go this.grepPatternFromOneFile(file, semaphore, results[i])
 		}
     }
 }
@@ -168,11 +170,13 @@ func showResults(resultsChan chan grepResult) {
 }
 
 
-func (this *goGrep) grepPatternFromOneFile(file string,
+func (this *goGrep) grepPatternFromOneFile(file string, semaphore chan int,
                  resultChan chan grepResult) {
     var result grepResult
 
     result.file = file
+
+	semaphore <- 1
 
     openedFile, err := os.Open(file)
     if err != nil {
@@ -180,7 +184,6 @@ func (this *goGrep) grepPatternFromOneFile(file string,
 		close(resultChan)
         return
     }
-	defer openedFile.Close()
 
 	// runtime.Gosched()
 
@@ -207,5 +210,8 @@ func (this *goGrep) grepPatternFromOneFile(file string,
         }
     }
 
+	openedFile.Close()
 	close(resultChan)
+
+	<- semaphore
 }
