@@ -180,6 +180,7 @@ func (this *goGrep) grepPatternFromOneFile(file string,
 		close(resultChan)
         return
     }
+	defer openedFile.Close()
 
 	// runtime.Gosched()
 
