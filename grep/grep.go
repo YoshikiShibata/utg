@@ -57,7 +57,7 @@ func newGoGrep(pattern string, files []string) *goGrep {
 }
 
 func showUsage(programName string) {
-    fmt.Printf("Version 0.1\n")
+    fmt.Printf("Version 0.2\n")
     fmt.Printf("%s [-r] PATTERN FILE...\n", programName)
 }
 
@@ -180,6 +180,8 @@ func (this *goGrep) grepPatternFromOneFile(file string,
 		close(resultChan)
         return
     }
+
+    defer openedFile.Close()
 
 	// runtime.Gosched()
 
